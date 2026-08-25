@@ -102,8 +102,8 @@ def test_duplicate_row_in_file_rejection(client, db_session):
     assert db_session.query(Sales).count() == initial_sales_count
 
 
-def test_duplicate_row_against_db_rejection(client, db_session):
-    """Test rejection when row already exists in database."""
+def test_upsert_replaces_existing_db_records(client, db_session):
+    """Test that uploading a revised sales record for an existing date seamlessly upserts."""
     prod = db_session.query(Product).filter(Product.sku_code == "SKU-KEYBOARD").first()
     target_date = date(2026, 8, 17)
     existing_sale = (
@@ -115,7 +115,7 @@ def test_duplicate_row_against_db_rejection(client, db_session):
 
     csv_existing = (
         "date,sku_code,store_id,units_sold,revenue\n"
-        "2026-08-17,SKU-KEYBOARD,1,20,1799.80\n"
+        "2026-08-17,SKU-KEYBOARD,1,45,4049.55\n"
     )
 
     response = client.post(
@@ -123,10 +123,18 @@ def test_duplicate_row_against_db_rejection(client, db_session):
         files={"file": ("existing.csv", io.BytesIO(csv_existing.encode("utf-8")), "text/csv")},
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "validation_error"
-    assert any("already exists in database" in err["issue"] for err in data["errors"])
+    assert data["status"] == "success"
+    
+    # Verify the record was updated with the new units and revenue
+    updated_sale = (
+        db_session.query(Sales)
+        .filter(Sales.product_id == prod.id, Sales.store_id == 1, Sales.date == target_date)
+        .first()
+    )
+    assert updated_sale.units_sold == 45
+    assert updated_sale.revenue == pytest.approx(4049.55, 0.01)
 
 
 def test_unknown_sku_rejection(client, db_session):

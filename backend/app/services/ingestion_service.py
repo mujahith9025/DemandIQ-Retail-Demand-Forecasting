@@ -292,16 +292,6 @@ class SalesDataIngestionService:
                 else:
                     seen_in_file.add(file_key)
 
-                db_key = (product_id, parsed_store_id, parsed_date)
-                if db_key in existing_sales_keys:
-                    validation_errors.append(
-                        RowValidationError(
-                            row_number=line_num,
-                            column=None,
-                            issue=f"Sales record already exists in database for SKU '{raw_sku}', Store {parsed_store_id}, Date {parsed_date}.",
-                        )
-                    )
-
                 # Record date range
                 if min_date is None or parsed_date < min_date:
                     min_date = parsed_date
@@ -324,7 +314,7 @@ class SalesDataIngestionService:
                     }
                 )
 
-        # 5. If ANY errors exist, reject entire batch (atomic)
+        # 5. If ANY validation errors exist, reject entire batch (atomic)
         if validation_errors:
             return False, DataUploadErrorResponse(
                 error_count=len(validation_errors),
@@ -343,8 +333,16 @@ class SalesDataIngestionService:
                 ],
             )
 
-        # 6. Bulk insert in batches
+        # 6. Bulk Upsert (replace any existing records in range, then bulk insert new records)
         try:
+            # Delete existing overlapping records in database to ensure clean overwrite
+            for r in parsed_records:
+                self.db.query(Sales).filter(
+                    Sales.product_id == r["product_id"],
+                    Sales.store_id == r["store_id"],
+                    Sales.date == r["date"]
+                ).delete(synchronize_session=False)
+
             # Use bulk_insert_mappings for high throughput
             batch_size = 1000
             for i in range(0, len(parsed_records), batch_size):

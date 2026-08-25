@@ -191,6 +191,20 @@ export interface DashboardKPIs {
   overstock_risk_count: number;
   urgent_reorder_count: number;
   generated_at: string;
+  trend_data?: Array<{
+    date: string;
+    historical_sales: number | null;
+    predicted_demand: number;
+    lower_bound: number;
+    upper_bound: number;
+  }>;
+  top_skus?: Array<{
+    sku: string;
+    name: string;
+    category: string;
+    predicted_30d_units: number;
+    growth_pct: number;
+  }>;
 }
 
 export interface PaginatedResult<T> {

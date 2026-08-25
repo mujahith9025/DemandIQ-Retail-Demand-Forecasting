@@ -14,6 +14,8 @@ class DashboardKPIResponse(BaseModel):
     overstock_risk_count: int
     urgent_reorder_count: int
     generated_at: str
+    trend_data: Optional[List[Dict[str, Any]]] = None
+    top_skus: Optional[List[Dict[str, Any]]] = None
 
 
 class ReportItemResponse(BaseModel):

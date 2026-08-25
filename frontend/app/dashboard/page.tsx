@@ -99,13 +99,21 @@ export default function DashboardPage() {
     },
   ];
 
+  const trendData = kpis?.trend_data && kpis.trend_data.length > 0 ? kpis.trend_data : mockTrendData;
+  const topSkusData = kpis?.top_skus && kpis.top_skus.length > 0 ? kpis.top_skus : mockTopSkus;
+
   return (
-    <div className="space-y-8">
-      {/* Header & Store Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="space-y-8 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Executive Dashboard</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="p-1 rounded-md bg-teal-50 text-teal-700 font-mono text-2xs uppercase tracking-wider font-bold">
+              Live Engine Telemetry
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Executive Dashboard</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
             Enterprise retail demand forecasts, inventory health signals, and replenishment recommendations.
           </p>
         </div>
@@ -160,7 +168,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <KPICard
           title="Projected 30D Revenue"
-          value={loading ? "..." : `$${(kpis?.projected_revenue_30d || 1482900).toLocaleString()}`}
+          value={loading ? "..." : `₹${(kpis?.projected_revenue_30d || 1482900).toLocaleString()}`}
           change={`+${kpis?.revenue_growth_pct || 8.4}%`}
           trend="up"
           icon={DollarSign}
@@ -176,21 +184,21 @@ export default function DashboardPage() {
         />
         <KPICard
           title="Active Products"
-          value={loading ? "..." : `${kpis?.total_active_products || 1240} SKUs`}
+          value={loading ? "..." : `${kpis?.total_active_products || 2} SKUs`}
           subtitle={`Across ${kpis?.total_stores || 2} active stores`}
           icon={Package}
-          badgeColor="emerald"
+          badgeColor="indigo"
         />
         <KPICard
           title="Stockout Risks"
-          value={loading ? "..." : `${kpis?.stockout_risk_count || 6} SKUs`}
-          subtitle={`${kpis?.urgent_reorder_count || 3} urgent reorders`}
-          icon={AlertTriangle}
+          value={loading ? "..." : `${kpis?.stockout_risk_count || 1} SKUs`}
+          subtitle={`${kpis?.urgent_reorder_count || 1} urgent reorders`}
           badgeColor="rose"
+          icon={AlertTriangle}
         />
       </div>
 
-      {/* Charts Section */}
+      {/* Charts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <ChartWrapper
@@ -199,7 +207,7 @@ export default function DashboardPage() {
             badge="Ensemble AI"
           >
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={mockTrendData}>
+              <ComposedChart data={trendData}>
                 <defs>
                   <linearGradient id="colorBand" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#14B8A6" stopOpacity={0.25} />
@@ -287,7 +295,7 @@ export default function DashboardPage() {
             Next 30-Day Window
           </span>
         </div>
-        <DataTable columns={skuColumns} data={mockTopSkus} />
+        <DataTable columns={skuColumns} data={topSkusData} />
       </div>
     </div>
   );

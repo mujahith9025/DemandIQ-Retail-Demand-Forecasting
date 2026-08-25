@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  # --- Database Service (Shared) ---
+  postgres:
+    image: postgres:15-alpine
+    container_name: demandiq_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-demandiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-demandiq_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-demandiq_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-demandiq} -d ${POSTGRES_DB:-demandiq_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --- Local Development Backend (Hot Reloading) ---
+  backend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: demandiq_backend_dev
+    restart: unless-stopped
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=True
+      - DATABASE_URL=postgresql://demandiq:demandiq_secret@postgres:5432/demandiq_db
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - SECRET_KEY=${SECRET_KEY:-dev_secret_key_change_in_production_123456}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # --- Production-Grade Backend (Gunicorn + 4 Uvicorn Workers) ---
+  backend:
+    profiles: ["prod", "default"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: demandiq_backend_prod
+    restart: always
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - DATABASE_URL=postgresql://demandiq:demandiq_secret@postgres:5432/demandiq_db
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","https://demandiq.io"]
+      - SECRET_KEY=${SECRET_KEY:-prod_super_secret_key_994821038592019482}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # --- Local Development Frontend ---
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: demandiq_frontend_dev
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend-dev
+    command: npm run dev
+
+  # --- Production-Grade Frontend (Standalone Runner) ---
+  frontend:
+    profiles: ["prod", "default"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: demandiq_frontend_prod
+    restart: always
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local

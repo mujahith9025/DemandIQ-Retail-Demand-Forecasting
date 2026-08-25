@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Database,
   Search,
@@ -52,9 +52,9 @@ export default function DatasetExplorerPage() {
   const fetchOverview = async () => {
     try {
       const data = await api.data.getOverview();
-      setOverview(data);
+      if (data) setOverview(data);
     } catch (e) {
-      console.error(e);
+      console.error("Overview fetch error:", e);
     }
   };
 
@@ -70,11 +70,13 @@ export default function DatasetExplorerPage() {
         sort_by: sortBy,
         order: sortOrder,
       });
-      setSalesData(data.items || []);
-      setSalesTotal(data.total || 0);
-      setSalesSummary(data.summary || { total_units: 0, total_revenue_inr: 0 });
+      if (data) {
+        setSalesData(data.items || []);
+        setSalesTotal(data.total || 0);
+        setSalesSummary(data.summary || { total_units: 0, total_revenue_inr: 0 });
+      }
     } catch (e: any) {
-      toast.error(e.message || "Failed to load sales data.");
+      toast.error(e?.message || "Failed to load sales dataset.");
     } finally {
       setLoading(false);
     }
@@ -84,9 +86,9 @@ export default function DatasetExplorerPage() {
   const fetchCatalog = async () => {
     try {
       const data = await api.data.getCatalog();
-      setCatalogData(data);
+      if (data) setCatalogData(data);
     } catch (e) {
-      console.error(e);
+      console.error("Catalog fetch error:", e);
     }
   };
 
@@ -103,7 +105,7 @@ export default function DatasetExplorerPage() {
 
   // Export current table as CSV
   const handleExportCSV = () => {
-    if (!salesData.length) {
+    if (!salesData || salesData.length === 0) {
       toast.error("No data available to export.");
       return;
     }
@@ -112,20 +114,20 @@ export default function DatasetExplorerPage() {
       headers.join(","),
       ...salesData.map((r) =>
         [
-          r.id,
-          r.date,
-          `"${r.sku_code}"`,
-          `"${r.product_name}"`,
-          `"${r.category}"`,
-          r.store_id,
-          `"${r.store_name}"`,
-          r.units_sold,
-          r.revenue,
+          r.id ?? "",
+          r.date ?? "",
+          `"${r.sku_code ?? ""}"`,
+          `"${r.product_name ?? ""}"`,
+          `"${r.category ?? ""}"`,
+          r.store_id ?? "",
+          `"${r.store_name ?? ""}"`,
+          r.units_sold ?? 0,
+          r.revenue ?? 0,
         ].join(",")
       ),
     ];
 
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -135,82 +137,95 @@ export default function DatasetExplorerPage() {
     toast.success("Dataset successfully exported to CSV!");
   };
 
-  // Table Columns
-  const salesColumns: Column<any>[] = [
-    { header: "Date", accessorKey: "date", className: "font-mono font-semibold text-slate-800 text-xs" },
-    { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
-    { header: "Product Name", accessorKey: "product_name", className: "font-medium text-slate-900 text-xs" },
-    { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
-    { header: "Store", accessorKey: "store_name", className: "text-slate-600 text-xs" },
-    {
-      header: "Units Sold",
-      accessorKey: "units_sold",
-      className: "text-right font-mono font-bold text-slate-800 text-xs",
-    },
-    {
-      header: "Revenue (INR)",
-      accessorKey: "revenue",
-      className: "text-right font-mono font-bold text-emerald-700 text-xs",
-      cell: (row) => `₹${row.revenue.toLocaleString()}`,
-    },
-  ];
+  // Table Columns with safe formatters
+  const salesColumns: Column<any>[] = useMemo(
+    () => [
+      { header: "Date", accessorKey: "date", className: "font-mono font-semibold text-slate-800 text-xs" },
+      { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
+      { header: "Product Name", accessorKey: "product_name", className: "font-medium text-slate-900 text-xs" },
+      { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
+      { header: "Store", accessorKey: "store_name", className: "text-slate-600 text-xs" },
+      {
+        header: "Units Sold",
+        accessorKey: "units_sold",
+        className: "text-right font-mono font-bold text-slate-800 text-xs",
+        cell: (row) => `${Number(row?.units_sold || 0).toLocaleString()}`,
+      },
+      {
+        header: "Revenue (INR)",
+        accessorKey: "revenue",
+        className: "text-right font-mono font-bold text-emerald-700 text-xs",
+        cell: (row) => `₹${Number(row?.revenue || 0).toLocaleString()}`,
+      },
+    ],
+    []
+  );
 
-  const productColumns: Column<any>[] = [
-    { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
-    { header: "Name", accessorKey: "name", className: "font-semibold text-slate-900 text-xs" },
-    { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
-    { header: "Subcategory", accessorKey: "subcategory", className: "text-slate-500 text-xs" },
-    {
-      header: "Unit Price (INR)",
-      accessorKey: "unit_price",
-      className: "text-right font-mono font-semibold text-slate-800 text-xs",
-      cell: (row) => `₹${row.unit_price.toLocaleString()}`,
-    },
-    {
-      header: "Unit Cost (INR)",
-      accessorKey: "unit_cost",
-      className: "text-right font-mono text-slate-500 text-xs",
-      cell: (row) => `₹${row.unit_cost.toLocaleString()}`,
-    },
-    {
-      header: "Lead Time",
-      accessorKey: "lead_time_days",
-      className: "text-right font-mono text-xs",
-      cell: (row) => `${row.lead_time_days} days`,
-    },
-  ];
+  const productColumns: Column<any>[] = useMemo(
+    () => [
+      { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
+      { header: "Name", accessorKey: "name", className: "font-semibold text-slate-900 text-xs" },
+      { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
+      { header: "Subcategory", accessorKey: "subcategory", className: "text-slate-500 text-xs" },
+      {
+        header: "Unit Price (INR)",
+        accessorKey: "unit_price",
+        className: "text-right font-mono font-semibold text-slate-800 text-xs",
+        cell: (row) => `₹${Number(row?.unit_price || 0).toLocaleString()}`,
+      },
+      {
+        header: "Unit Cost (INR)",
+        accessorKey: "unit_cost",
+        className: "text-right font-mono text-slate-500 text-xs",
+        cell: (row) => `₹${Number(row?.unit_cost || 0).toLocaleString()}`,
+      },
+      {
+        header: "Lead Time",
+        accessorKey: "lead_time_days",
+        className: "text-right font-mono text-xs",
+        cell: (row) => `${row?.lead_time_days || 0} days`,
+      },
+    ],
+    []
+  );
 
-  const storeColumns: Column<any>[] = [
-    { header: "Store ID", accessorKey: "id", className: "font-mono font-bold text-slate-700 text-xs" },
-    { header: "Store Name", accessorKey: "name", className: "font-bold text-slate-900 text-xs" },
-    { header: "Location / Address", accessorKey: "location", className: "text-slate-600 text-xs" },
-    { header: "City", accessorKey: "city", className: "font-medium text-slate-800 text-xs" },
-    { header: "Region", accessorKey: "region", className: "text-slate-500 text-xs" },
-    { header: "Timezone", accessorKey: "timezone", className: "font-mono text-2xs text-slate-400" },
-  ];
+  const storeColumns: Column<any>[] = useMemo(
+    () => [
+      { header: "Store ID", accessorKey: "id", className: "font-mono font-bold text-slate-700 text-xs" },
+      { header: "Store Name", accessorKey: "name", className: "font-bold text-slate-900 text-xs" },
+      { header: "Location / Address", accessorKey: "location", className: "text-slate-600 text-xs" },
+      { header: "City", accessorKey: "city", className: "font-medium text-slate-800 text-xs" },
+      { header: "Region", accessorKey: "region", className: "text-slate-500 text-xs" },
+      { header: "Timezone", accessorKey: "timezone", className: "font-mono text-2xs text-slate-400" },
+    ],
+    []
+  );
 
-  const inventoryColumns: Column<any>[] = [
-    { header: "Product ID", accessorKey: "product_id", className: "font-mono font-bold text-slate-700 text-xs" },
-    { header: "Store ID", accessorKey: "store_id", className: "font-mono text-slate-600 text-xs" },
-    {
-      header: "Current Stock",
-      accessorKey: "current_stock",
-      className: "text-right font-mono font-bold text-slate-900 text-xs",
-      cell: (row) => `${row.current_stock} units`,
-    },
-    {
-      header: "Safety Stock",
-      accessorKey: "safety_stock",
-      className: "text-right font-mono text-teal-700 text-xs",
-      cell: (row) => `${row.safety_stock} units`,
-    },
-    {
-      header: "Reorder Point (ROP)",
-      accessorKey: "reorder_point",
-      className: "text-right font-mono font-bold text-amber-700 text-xs",
-      cell: (row) => `${row.reorder_point} units`,
-    },
-  ];
+  const inventoryColumns: Column<any>[] = useMemo(
+    () => [
+      { header: "Product ID", accessorKey: "product_id", className: "font-mono font-bold text-slate-700 text-xs" },
+      { header: "Store ID", accessorKey: "store_id", className: "font-mono text-slate-600 text-xs" },
+      {
+        header: "Current Stock",
+        accessorKey: "current_stock",
+        className: "text-right font-mono font-bold text-slate-900 text-xs",
+        cell: (row) => `${row?.current_stock || 0} units`,
+      },
+      {
+        header: "Safety Stock",
+        accessorKey: "safety_stock",
+        className: "text-right font-mono text-teal-700 text-xs",
+        cell: (row) => `${row?.safety_stock || 0} units`,
+      },
+      {
+        header: "Reorder Point (ROP)",
+        accessorKey: "reorder_point",
+        className: "text-right font-mono font-bold text-amber-700 text-xs",
+        cell: (row) => `${row?.reorder_point || 0} units`,
+      },
+    ],
+    []
+  );
 
   const salesStats = overview?.tables?.sales;
 
@@ -249,21 +264,21 @@ export default function DatasetExplorerPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <KPICard
           title="Total Ingested Sales"
-          value={`${salesStats?.count || salesTotal || 0} rows`}
+          value={`${salesStats?.count ?? salesTotal ?? 0} rows`}
           subtitle={salesStats?.start_date && salesStats?.end_date ? `${salesStats.start_date} to ${salesStats.end_date}` : "Historical range"}
           icon={Database}
           badgeColor="brand"
         />
         <KPICard
           title="Gross Revenue Recorded"
-          value={`₹${(salesStats?.total_revenue_inr || salesSummary.total_revenue_inr || 0).toLocaleString()}`}
+          value={`₹${Number(salesStats?.total_revenue_inr ?? salesSummary?.total_revenue_inr ?? 0).toLocaleString()}`}
           subtitle="Cumulative sales value in INR"
           icon={DollarSign}
           badgeColor="teal"
         />
         <KPICard
           title="Total Units Sold"
-          value={`${(salesStats?.total_units_sold || salesSummary.total_units || 0).toLocaleString()} units`}
+          value={`${Number(salesStats?.total_units_sold ?? salesSummary?.total_units ?? 0).toLocaleString()} units`}
           subtitle="Across all physical stores"
           icon={Layers}
           badgeColor="emerald"
@@ -273,7 +288,7 @@ export default function DatasetExplorerPage() {
           value={`${overview?.tables?.products?.count || 2} SKUs / ${overview?.tables?.stores?.count || 2} Stores`}
           subtitle={`${overview?.tables?.alerts?.count || 5} active alert signals`}
           icon={Package}
-          badgeColor="indigo"
+          badgeColor="brand"
         />
       </div>
 

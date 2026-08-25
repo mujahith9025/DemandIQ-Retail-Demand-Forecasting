@@ -335,12 +335,13 @@ class SalesDataIngestionService:
 
         # 6. Bulk Upsert (replace any existing records in range, then bulk insert new records)
         try:
-            # Delete existing overlapping records in database to ensure clean overwrite
-            for r in parsed_records:
+            # 1 single fast batch delete for all affected product/store/date ranges
+            if min_date and max_date and affected_product_ids and affected_store_ids:
                 self.db.query(Sales).filter(
-                    Sales.product_id == r["product_id"],
-                    Sales.store_id == r["store_id"],
-                    Sales.date == r["date"]
+                    Sales.product_id.in_(list(affected_product_ids)),
+                    Sales.store_id.in_(list(affected_store_ids)),
+                    Sales.date >= min_date,
+                    Sales.date <= max_date
                 ).delete(synchronize_session=False)
 
             # Use bulk_insert_mappings for high throughput

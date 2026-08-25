@@ -4,33 +4,38 @@ import React, { useState, useEffect, useMemo } from "react";
 import {
   Database,
   Search,
-  Filter,
   Download,
-  Calendar,
   DollarSign,
   Package,
   Store as StoreIcon,
   Layers,
-  ArrowUpDown,
   RefreshCw,
-  Sparkles,
-  CheckCircle2,
   Table as TableIcon,
+  Loader2,
 } from "lucide-react";
 import KPICard from "@/components/KPICard";
-import ChartWrapper from "@/components/ChartWrapper";
 import DataTable, { Column } from "@/components/DataTable";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/context/ToastContext";
 
-// Fallback initial data to guarantee zero runtime crashes
+// Fixed locale formatter to eliminate hydration mismatch between SSR and browser
+function formatCurrency(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return "0";
+  return new Intl.NumberFormat("en-IN").format(Math.round(val));
+}
+
+function formatNumber(val: number | null | undefined): string {
+  if (val === null || val === undefined || isNaN(val)) return "0";
+  return new Intl.NumberFormat("en-IN").format(val);
+}
+
 const defaultOverview = {
   tables: {
     sales: {
       count: 428,
       total_units_sold: 8370,
-      total_revenue_inr: 90936130.0,
+      total_revenue_inr: 90936130,
       start_date: "2026-06-01",
       end_date: "2026-09-30",
     },
@@ -49,8 +54,8 @@ const defaultCatalog = {
       name: "Ergonomic Mechanical Keyboard",
       category: "Electronics",
       subcategory: "Peripherals",
-      unit_price: 4499.0,
-      unit_cost: 2199.0,
+      unit_price: 4499,
+      unit_cost: 2199,
       lead_time_days: 5,
     },
     {
@@ -59,8 +64,8 @@ const defaultCatalog = {
       name: "Ultra-HD 4K 27in Monitor",
       category: "Displays",
       subcategory: "Monitors",
-      unit_price: 24999.0,
-      unit_cost: 14500.0,
+      unit_price: 24999,
+      unit_cost: 14500,
       lead_time_days: 7,
     },
   ],
@@ -106,6 +111,7 @@ export default function DatasetExplorerPage() {
   const { user } = useAuth();
   const toast = useToast();
 
+  const [mounted, setMounted] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<"sales" | "catalog" | "stores" | "inventory">("sales");
   const [overview, setOverview] = useState<any>(defaultOverview);
   const [loading, setLoading] = useState<boolean>(false);
@@ -118,7 +124,7 @@ export default function DatasetExplorerPage() {
   const pageSize = 25;
 
   // Filters
-  const [selectedStore, setSelectedStore] = useState<number | null>(user?.assigned_store_id || null);
+  const [selectedStore, setSelectedStore] = useState<number | null>(null);
   const [searchSku, setSearchSku] = useState<string>("");
   const [sortBy, setSortBy] = useState<string>("date");
   const [sortOrder, setSortOrder] = useState<string>("desc");
@@ -126,13 +132,20 @@ export default function DatasetExplorerPage() {
   // Catalog & Store state
   const [catalogData, setCatalogData] = useState<any>(defaultCatalog);
 
+  useEffect(() => {
+    setMounted(true);
+    if (user?.assigned_store_id) {
+      setSelectedStore(user.assigned_store_id);
+    }
+  }, [user]);
+
   // Fetch Overview Stats
   const fetchOverview = async () => {
     try {
       const data = await api.data.getOverview();
-      if (data && data.tables) setOverview(data);
+      if (data?.tables) setOverview(data);
     } catch (e) {
-      // Gracefully maintain defaultOverview
+      // Fall back to defaultOverview
     }
   };
 
@@ -148,7 +161,7 @@ export default function DatasetExplorerPage() {
         sort_by: sortBy,
         order: sortOrder,
       });
-      if (data && Array.isArray(data.items)) {
+      if (data?.items) {
         setSalesData(data.items);
         setSalesTotal(data.total || data.items.length);
         if (data.summary) setSalesSummary(data.summary);
@@ -164,22 +177,24 @@ export default function DatasetExplorerPage() {
   const fetchCatalog = async () => {
     try {
       const data = await api.data.getCatalog();
-      if (data && data.products) setCatalogData(data);
+      if (data?.products) setCatalogData(data);
     } catch (e) {
-      // Gracefully maintain defaultCatalog
+      // Fall back to defaultCatalog
     }
   };
 
   useEffect(() => {
-    fetchOverview();
-    fetchCatalog();
-  }, []);
+    if (mounted) {
+      fetchOverview();
+      fetchCatalog();
+    }
+  }, [mounted]);
 
   useEffect(() => {
-    if (activeTab === "sales") {
+    if (mounted && activeTab === "sales") {
       fetchSales();
     }
-  }, [selectedStore, searchSku, sortBy, sortOrder, page, activeTab]);
+  }, [mounted, selectedStore, searchSku, sortBy, sortOrder, page, activeTab]);
 
   // Export current table as CSV
   const handleExportCSV = () => {
@@ -215,7 +230,7 @@ export default function DatasetExplorerPage() {
     toast.success("Dataset successfully exported to CSV!");
   };
 
-  // Table Columns with bulletproof formatting
+  // Table Columns with safe formatters
   const salesColumns: Column<any>[] = useMemo(
     () => [
       { header: "Date", accessorKey: "date", className: "font-mono font-semibold text-slate-800 text-xs" },
@@ -227,13 +242,13 @@ export default function DatasetExplorerPage() {
         header: "Units Sold",
         accessorKey: "units_sold",
         className: "text-right font-mono font-bold text-slate-800 text-xs",
-        cell: (row) => `${Number(row?.units_sold ?? 0).toLocaleString()}`,
+        cell: (row) => `${formatNumber(row?.units_sold)}`,
       },
       {
         header: "Revenue (INR)",
         accessorKey: "revenue",
         className: "text-right font-mono font-bold text-emerald-700 text-xs",
-        cell: (row) => `₹${Number(row?.revenue ?? 0).toLocaleString()}`,
+        cell: (row) => `₹${formatCurrency(row?.revenue)}`,
       },
     ],
     []
@@ -249,13 +264,13 @@ export default function DatasetExplorerPage() {
         header: "Unit Price (INR)",
         accessorKey: "unit_price",
         className: "text-right font-mono font-semibold text-slate-800 text-xs",
-        cell: (row) => `₹${Number(row?.unit_price ?? 0).toLocaleString()}`,
+        cell: (row) => `₹${formatCurrency(row?.unit_price)}`,
       },
       {
         header: "Unit Cost (INR)",
         accessorKey: "unit_cost",
         className: "text-right font-mono text-slate-500 text-xs",
-        cell: (row) => `₹${Number(row?.unit_cost ?? 0).toLocaleString()}`,
+        cell: (row) => `₹${formatCurrency(row?.unit_cost)}`,
       },
       {
         header: "Lead Time",
@@ -305,10 +320,18 @@ export default function DatasetExplorerPage() {
     []
   );
 
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-teal-600 animate-spin" />
+      </div>
+    );
+  }
+
   const salesStats = overview?.tables?.sales;
 
   return (
-    <div className="space-y-8 pb-12">
+    <div className="space-y-8 pb-12" suppressHydrationWarning>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -342,21 +365,21 @@ export default function DatasetExplorerPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <KPICard
           title="Total Ingested Sales"
-          value={`${salesStats?.count ?? salesTotal ?? 428} rows`}
+          value={`${formatNumber(salesStats?.count ?? salesTotal ?? 428)} rows`}
           subtitle={salesStats?.start_date && salesStats?.end_date ? `${salesStats.start_date} to ${salesStats.end_date}` : "Historical 90D range"}
           icon={Database}
           badgeColor="brand"
         />
         <KPICard
           title="Gross Revenue Recorded"
-          value={`₹${Number(salesStats?.total_revenue_inr ?? salesSummary?.total_revenue_inr ?? 90936130).toLocaleString()}`}
+          value={`₹${formatCurrency(salesStats?.total_revenue_inr ?? salesSummary?.total_revenue_inr ?? 90936130)}`}
           subtitle="Cumulative sales value in INR"
           icon={DollarSign}
           badgeColor="teal"
         />
         <KPICard
           title="Total Units Sold"
-          value={`${Number(salesStats?.total_units_sold ?? salesSummary?.total_units ?? 8370).toLocaleString()} units`}
+          value={`${formatNumber(salesStats?.total_units_sold ?? salesSummary?.total_units ?? 8370)} units`}
           subtitle="Across all physical stores"
           icon={Layers}
           badgeColor="emerald"
@@ -438,7 +461,7 @@ export default function DatasetExplorerPage() {
                     setSearchSku(e.target.value);
                     setPage(0);
                   }}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono"
                 />
               </div>
 
@@ -449,7 +472,7 @@ export default function DatasetExplorerPage() {
                   setSelectedStore(e.target.value ? Number(e.target.value) : null);
                   setPage(0);
                 }}
-                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
               >
                 <option value="">All Stores (Global)</option>
                 <option value="1">Store 1 (Seattle Flagship)</option>
@@ -464,7 +487,7 @@ export default function DatasetExplorerPage() {
                   setSortBy(sb);
                   setSortOrder(so);
                 }}
-                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
               >
                 <option value="date-desc">Date (Newest First)</option>
                 <option value="date-asc">Date (Oldest First)</option>

@@ -1,0 +1,463 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import {
+  Database,
+  Search,
+  Filter,
+  Download,
+  Calendar,
+  DollarSign,
+  Package,
+  Store as StoreIcon,
+  Layers,
+  ArrowUpDown,
+  RefreshCw,
+  Sparkles,
+  CheckCircle2,
+  Table as TableIcon,
+} from "lucide-react";
+import KPICard from "@/components/KPICard";
+import ChartWrapper from "@/components/ChartWrapper";
+import DataTable, { Column } from "@/components/DataTable";
+import { api } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { useToast } from "@/context/ToastContext";
+
+export default function DatasetExplorerPage() {
+  const { user } = useAuth();
+  const toast = useToast();
+
+  const [activeTab, setActiveTab] = useState<"sales" | "catalog" | "stores" | "inventory">("sales");
+  const [overview, setOverview] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  // Sales Explorer State
+  const [salesData, setSalesData] = useState<any[]>([]);
+  const [salesTotal, setSalesTotal] = useState<number>(0);
+  const [salesSummary, setSalesSummary] = useState<any>({ total_units: 0, total_revenue_inr: 0 });
+  const [page, setPage] = useState<number>(0);
+  const pageSize = 25;
+
+  // Filters
+  const [selectedStore, setSelectedStore] = useState<number | null>(user?.assigned_store_id || null);
+  const [searchSku, setSearchSku] = useState<string>("");
+  const [sortBy, setSortBy] = useState<string>("date");
+  const [sortOrder, setSortOrder] = useState<string>("desc");
+
+  // Catalog & Store state
+  const [catalogData, setCatalogData] = useState<any>(null);
+
+  // Fetch Overview Stats
+  const fetchOverview = async () => {
+    try {
+      const data = await api.data.getOverview();
+      setOverview(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Fetch Sales Records
+  const fetchSales = async () => {
+    setLoading(true);
+    try {
+      const data = await api.data.getSales({
+        store_id: selectedStore,
+        sku_code: searchSku || undefined,
+        limit: pageSize,
+        offset: page * pageSize,
+        sort_by: sortBy,
+        order: sortOrder,
+      });
+      setSalesData(data.items || []);
+      setSalesTotal(data.total || 0);
+      setSalesSummary(data.summary || { total_units: 0, total_revenue_inr: 0 });
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load sales data.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch Catalog Data
+  const fetchCatalog = async () => {
+    try {
+      const data = await api.data.getCatalog();
+      setCatalogData(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchOverview();
+    fetchCatalog();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "sales") {
+      fetchSales();
+    }
+  }, [selectedStore, searchSku, sortBy, sortOrder, page, activeTab]);
+
+  // Export current table as CSV
+  const handleExportCSV = () => {
+    if (!salesData.length) {
+      toast.error("No data available to export.");
+      return;
+    }
+    const headers = ["ID", "Date", "SKU Code", "Product Name", "Category", "Store ID", "Store Name", "Units Sold", "Revenue (INR)"];
+    const csvRows = [
+      headers.join(","),
+      ...salesData.map((r) =>
+        [
+          r.id,
+          r.date,
+          `"${r.sku_code}"`,
+          `"${r.product_name}"`,
+          `"${r.category}"`,
+          r.store_id,
+          `"${r.store_name}"`,
+          r.units_sold,
+          r.revenue,
+        ].join(",")
+      ),
+    ];
+
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `demandiq_sales_dataset_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.success("Dataset successfully exported to CSV!");
+  };
+
+  // Table Columns
+  const salesColumns: Column<any>[] = [
+    { header: "Date", accessorKey: "date", className: "font-mono font-semibold text-slate-800 text-xs" },
+    { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
+    { header: "Product Name", accessorKey: "product_name", className: "font-medium text-slate-900 text-xs" },
+    { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
+    { header: "Store", accessorKey: "store_name", className: "text-slate-600 text-xs" },
+    {
+      header: "Units Sold",
+      accessorKey: "units_sold",
+      className: "text-right font-mono font-bold text-slate-800 text-xs",
+    },
+    {
+      header: "Revenue (INR)",
+      accessorKey: "revenue",
+      className: "text-right font-mono font-bold text-emerald-700 text-xs",
+      cell: (row) => `₹${row.revenue.toLocaleString()}`,
+    },
+  ];
+
+  const productColumns: Column<any>[] = [
+    { header: "SKU Code", accessorKey: "sku_code", className: "font-mono font-bold text-teal-700 text-xs" },
+    { header: "Name", accessorKey: "name", className: "font-semibold text-slate-900 text-xs" },
+    { header: "Category", accessorKey: "category", className: "text-slate-500 font-mono text-2xs" },
+    { header: "Subcategory", accessorKey: "subcategory", className: "text-slate-500 text-xs" },
+    {
+      header: "Unit Price (INR)",
+      accessorKey: "unit_price",
+      className: "text-right font-mono font-semibold text-slate-800 text-xs",
+      cell: (row) => `₹${row.unit_price.toLocaleString()}`,
+    },
+    {
+      header: "Unit Cost (INR)",
+      accessorKey: "unit_cost",
+      className: "text-right font-mono text-slate-500 text-xs",
+      cell: (row) => `₹${row.unit_cost.toLocaleString()}`,
+    },
+    {
+      header: "Lead Time",
+      accessorKey: "lead_time_days",
+      className: "text-right font-mono text-xs",
+      cell: (row) => `${row.lead_time_days} days`,
+    },
+  ];
+
+  const storeColumns: Column<any>[] = [
+    { header: "Store ID", accessorKey: "id", className: "font-mono font-bold text-slate-700 text-xs" },
+    { header: "Store Name", accessorKey: "name", className: "font-bold text-slate-900 text-xs" },
+    { header: "Location / Address", accessorKey: "location", className: "text-slate-600 text-xs" },
+    { header: "City", accessorKey: "city", className: "font-medium text-slate-800 text-xs" },
+    { header: "Region", accessorKey: "region", className: "text-slate-500 text-xs" },
+    { header: "Timezone", accessorKey: "timezone", className: "font-mono text-2xs text-slate-400" },
+  ];
+
+  const inventoryColumns: Column<any>[] = [
+    { header: "Product ID", accessorKey: "product_id", className: "font-mono font-bold text-slate-700 text-xs" },
+    { header: "Store ID", accessorKey: "store_id", className: "font-mono text-slate-600 text-xs" },
+    {
+      header: "Current Stock",
+      accessorKey: "current_stock",
+      className: "text-right font-mono font-bold text-slate-900 text-xs",
+      cell: (row) => `${row.current_stock} units`,
+    },
+    {
+      header: "Safety Stock",
+      accessorKey: "safety_stock",
+      className: "text-right font-mono text-teal-700 text-xs",
+      cell: (row) => `${row.safety_stock} units`,
+    },
+    {
+      header: "Reorder Point (ROP)",
+      accessorKey: "reorder_point",
+      className: "text-right font-mono font-bold text-amber-700 text-xs",
+      cell: (row) => `${row.reorder_point} units`,
+    },
+  ];
+
+  const salesStats = overview?.tables?.sales;
+
+  return (
+    <div className="space-y-8 pb-12">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="p-1 rounded-md bg-teal-50 text-teal-700 font-mono text-2xs uppercase tracking-wider font-bold">
+              Database Explorer
+            </span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">Dataset Explorer</h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1">
+            Explore, filter, and inspect all historical sales transactions, catalog products, and store records stored in PostgreSQL.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              fetchOverview();
+              if (activeTab === "sales") fetchSales();
+              else fetchCatalog();
+            }}
+            title="Refresh Data"
+            className="p-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl text-slate-600 transition-colors shadow-2xs"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-teal-600" : ""}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Overview Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <KPICard
+          title="Total Ingested Sales"
+          value={`${salesStats?.count || salesTotal || 0} rows`}
+          subtitle={salesStats?.start_date && salesStats?.end_date ? `${salesStats.start_date} to ${salesStats.end_date}` : "Historical range"}
+          icon={Database}
+          badgeColor="brand"
+        />
+        <KPICard
+          title="Gross Revenue Recorded"
+          value={`₹${(salesStats?.total_revenue_inr || salesSummary.total_revenue_inr || 0).toLocaleString()}`}
+          subtitle="Cumulative sales value in INR"
+          icon={DollarSign}
+          badgeColor="teal"
+        />
+        <KPICard
+          title="Total Units Sold"
+          value={`${(salesStats?.total_units_sold || salesSummary.total_units || 0).toLocaleString()} units`}
+          subtitle="Across all physical stores"
+          icon={Layers}
+          badgeColor="emerald"
+        />
+        <KPICard
+          title="Tracked Entities"
+          value={`${overview?.tables?.products?.count || 2} SKUs / ${overview?.tables?.stores?.count || 2} Stores`}
+          subtitle={`${overview?.tables?.alerts?.count || 5} active alert signals`}
+          icon={Package}
+          badgeColor="indigo"
+        />
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          onClick={() => setActiveTab("sales")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeTab === "sales"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+          }`}
+        >
+          <TableIcon className="w-3.5 h-3.5" />
+          <span>Daily Sales Transactions ({salesTotal || salesStats?.count || 0})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("catalog")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeTab === "catalog"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" />
+          <span>Product Catalog ({catalogData?.products?.length || 2})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("stores")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeTab === "stores"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+          }`}
+        >
+          <StoreIcon className="w-3.5 h-3.5" />
+          <span>Store Locations ({catalogData?.stores?.length || 2})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("inventory")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            activeTab === "inventory"
+              ? "bg-slate-900 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200"
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Inventory Parameters ({catalogData?.inventories?.length || 2})</span>
+        </button>
+      </div>
+
+      {/* Tab 1: Sales History */}
+      {activeTab === "sales" && (
+        <div className="space-y-4">
+          {/* Filter Bar */}
+          <div className="p-4 bg-white border border-slate-200/80 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Search Box */}
+              <div className="relative min-w-[200px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search SKU code..."
+                  value={searchSku}
+                  onChange={(e) => {
+                    setSearchSku(e.target.value);
+                    setPage(0);
+                  }}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-mono"
+                />
+              </div>
+
+              {/* Store Filter */}
+              <select
+                value={selectedStore === null ? "" : selectedStore}
+                onChange={(e) => {
+                  setSelectedStore(e.target.value ? Number(e.target.value) : null);
+                  setPage(0);
+                }}
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
+              >
+                <option value="">All Stores (Global)</option>
+                <option value="1">Store 1 (Seattle Flagship)</option>
+                <option value="2">Store 2 (New York Hub)</option>
+              </select>
+
+              {/* Sort Filter */}
+              <select
+                value={`${sortBy}-${sortOrder}`}
+                onChange={(e) => {
+                  const [sb, so] = e.target.value.split("-");
+                  setSortBy(sb);
+                  setSortOrder(so);
+                }}
+                className="px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-teal-500 font-medium text-slate-700"
+              >
+                <option value="date-desc">Date (Newest First)</option>
+                <option value="date-asc">Date (Oldest First)</option>
+                <option value="revenue-desc">Revenue (Highest First)</option>
+                <option value="units_sold-desc">Units Sold (Highest First)</option>
+              </select>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 font-bold text-xs rounded-xl transition-colors shadow-2xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export CSV</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sales Table */}
+          <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
+            <DataTable columns={salesColumns} data={salesData} />
+
+            {/* Pagination footer */}
+            <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>
+                Showing <strong className="text-slate-800">{salesData.length ? page * pageSize + 1 : 0}</strong> to{" "}
+                <strong className="text-slate-800">{Math.min((page + 1) * pageSize, salesTotal)}</strong> of{" "}
+                <strong className="text-slate-800">{salesTotal}</strong> records
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                  className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-medium hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="font-mono px-2">Page {page + 1} of {Math.ceil(salesTotal / pageSize) || 1}</span>
+                <button
+                  disabled={(page + 1) * pageSize >= salesTotal}
+                  onClick={() => setPage((p) => p + 1)}
+                  className="px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-medium hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab 2: Product Catalog */}
+      {activeTab === "catalog" && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-6 space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Registered Product Catalog</h3>
+            <p className="text-xs text-slate-500">Master SKU catalog definitions with supplier lead times and base INR retail prices.</p>
+          </div>
+          <DataTable columns={productColumns} data={catalogData?.products || []} />
+        </div>
+      )}
+
+      {/* Tab 3: Store Locations */}
+      {activeTab === "stores" && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-6 space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Physical Store Network</h3>
+            <p className="text-xs text-slate-500">Retail storefront locations with region tags and operating timezones.</p>
+          </div>
+          <DataTable columns={storeColumns} data={catalogData?.stores || []} />
+        </div>
+      )}
+
+      {/* Tab 4: Inventory */}
+      {activeTab === "inventory" && (
+        <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs p-6 space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Warehouse Stock & Replenishment Parameters</h3>
+            <p className="text-xs text-slate-500">Live safety buffer calculations and dynamic reorder triggers.</p>
+          </div>
+          <DataTable columns={inventoryColumns} data={catalogData?.inventories || []} />
+        </div>
+      )}
+    </div>
+  );
+}

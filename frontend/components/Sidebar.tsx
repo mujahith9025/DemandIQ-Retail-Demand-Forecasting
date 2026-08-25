@@ -30,6 +30,7 @@ export default function Sidebar() {
     { name: "Inventory Reorder", href: "/inventory", icon: Boxes },
     { name: "Risk Alerts", href: "/alerts", icon: BellRing, badge: "3" },
     { name: "Reports & What-If", href: "/reports", icon: FileBarChart2 },
+    { name: "Dataset Explorer", href: "/explorer", icon: Database },
     { name: "Settings & Ingestion", href: "/settings", icon: Settings },
   ];
 

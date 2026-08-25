@@ -329,7 +329,7 @@ export const api = {
     },
   },
 
-  // Data Ingestion
+  // Data Ingestion & Explorer
   data: {
     uploadSalesCSV: async (file: File): Promise<DataUploadSuccessResponse> => {
       const formData = new FormData();
@@ -351,6 +351,37 @@ export const api = {
         throw error;
       }
       return data;
+    },
+
+    getOverview: async (): Promise<any> => {
+      return fetchWithAuth<any>("/api/data/overview");
+    },
+
+    getSales: async (params: {
+      store_id?: number | null;
+      sku_code?: string;
+      start_date?: string;
+      end_date?: string;
+      limit?: number;
+      offset?: number;
+      sort_by?: string;
+      order?: string;
+    } = {}): Promise<any> => {
+      const q = new URLSearchParams();
+      if (params.store_id) q.set("store_id", params.store_id.toString());
+      if (params.sku_code) q.set("sku_code", params.sku_code);
+      if (params.start_date) q.set("start_date", params.start_date);
+      if (params.end_date) q.set("end_date", params.end_date);
+      if (params.limit) q.set("limit", params.limit.toString());
+      if (params.offset !== undefined) q.set("offset", params.offset.toString());
+      if (params.sort_by) q.set("sort_by", params.sort_by);
+      if (params.order) q.set("order", params.order);
+
+      return fetchWithAuth<any>(`/api/data/sales?${q.toString()}`);
+    },
+
+    getCatalog: async (): Promise<any> => {
+      return fetchWithAuth<any>("/api/data/catalog");
     },
   },
 };
